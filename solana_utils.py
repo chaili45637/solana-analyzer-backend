@@ -1,88 +1,97 @@
-import os
-import requests
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
+# backend/solana_utils.py
 
-load_dotenv()
+import datetime
 
-RPC_URL = os.getenv("QUICKNODE_RPC")
+# 示例交易数据，真实环境请调用Solana RPC或API接口获取
+sample_transactions = [
+    {
+        "tx_id": "tx1",
+        "date": datetime.date(2025, 5, 1),
+        "type": "NFT Buy",
+        "amount": 2.5,
+        "counterparty": "addr1",
+        "fee": 0.0005,
+        "success": True,
+    },
+    {
+        "tx_id": "tx2",
+        "date": datetime.date(2025, 5, 2),
+        "type": "DeFi Stake",
+        "amount": 10,
+        "counterparty": "defi_contract",
+        "fee": 0.001,
+        "success": True,
+    },
+    {
+        "tx_id": "tx3",
+        "date": datetime.date(2025, 5, 3),
+        "type": "Transfer",
+        "amount": 1,
+        "counterparty": "addr2",
+        "fee": 0.0003,
+        "success": True,
+    },
+    {
+        "tx_id": "tx4",
+        "date": datetime.date(2025, 5, 4),
+        "type": "NFT Sell",
+        "amount": 3,
+        "counterparty": "addr3",
+        "fee": 0.0007,
+        "success": True,
+    },
+]
 
-def get_today_unix_range():
-    now = datetime.utcnow()
-    start = datetime(now.year, now.month, now.day)
-    end = start + timedelta(days=1)
-    return int(start.timestamp()), int(end.timestamp())
+# 已知诈骗地址示例
+known_scam_addresses = {"scammer1", "bad_actor_addr"}
 
-def fetch_transactions(address):
-    headers = {"Content-Type": "application/json"}
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "getSignaturesForAddress",
-        "params": [address, {"limit": 100}]
-    }
-    res = requests.post(RPC_URL, json=payload, headers=headers)
-    res.raise_for_status()
-    return res.json()["result"]
+def analyze_wallet(address: str, filters: dict):
+    """
+    分析钱包，根据过滤条件返回详细交易和统计信息
+    filters可包含：
+        - type: 交易类型过滤 (如 "NFT Buy", "DeFi Stake", "Transfer")
+        - start_date: datetime.date类型，开始日期
+        - end_date: datetime.date类型，结束日期
+    """
+    txs = sample_transactions  # 真实项目请替换为实际查询代码
 
-def analyze_wallet_today(address):
-    start_ts, end_ts = get_today_unix_range()
-    txs = fetch_transactions(address)
-
-    total_in = 0
-    total_out = 0
-    fee_total = 0
-    count = 0
-
+    # 筛选交易
+    filtered_txs = []
     for tx in txs:
-        block_time = tx.get("blockTime")
-        if not block_time:
+        if filters.get("type") and tx["type"] != filters["type"]:
             continue
-        if block_time < start_ts or block_time > end_ts:
+        if filters.get("start_date") and tx["date"] < filters["start_date"]:
             continue
-
-        # 查询交易详情
-        sig = tx["signature"]
-        detail_payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "getTransaction",
-            "params": [sig, {"encoding": "jsonParsed"}]
-        }
-        res = requests.post(RPC_URL, json=detail_payload).json()
-        result = res.get("result")
-        if not result:
+        if filters.get("end_date") and tx["date"] > filters["end_date"]:
             continue
+        filtered_txs.append(tx)
 
-        meta = result.get("meta", {})
-        fee = meta.get("fee", 0)
-        fee_total += fee / 1e9  # lamports to SOL
+    # 统计分析
+    buy_total = sum(tx["amount"] for tx in filtered_txs if "Buy" in tx["type"])
+    sell_total = sum(tx["amount"] for tx in filtered_txs if "Sell" in tx["type"])
+    fee_total = sum(tx["fee"] for tx in filtered_txs)
+    net_profit = sell_total - buy_total - fee_total
+    tx_count = len(filtered_txs)
 
-        # 判断资金流向（简单判断：如果是接收者）
-        transaction = result.get("transaction", {})
-        message = transaction.get("message", {})
-        account_keys = message.get("accountKeys", [])
+    # 资产组合估值（示例固定值，实际需调用行情API）
+    asset_value = 100  # TODO: 调用市场行情接口获取实时估值
 
-        pre_balances = meta.get("preBalances", [])
-        post_balances = meta.get("postBalances", [])
+    # 关联地址网络
+    related_addresses = set(tx["counterparty"] for tx in filtered_txs if tx["counterparty"] != address)
 
-        for i, acct in enumerate(account_keys):
-            pubkey = acct.get("pubkey")
-            if pubkey == address and i < len(pre_balances):
-                delta = (post_balances[i] - pre_balances[i]) / 1e9
-                if delta > 0:
-                    total_in += delta
-                elif delta < 0:
-                    total_out += -delta
-                break
-        count += 1
+    # 安全风险检测
+    risky = any(addr in known_scam_addresses for addr in related_addresses)
+    risk_message = "Warning: Wallet interacted with suspicious addresses!" if risky else "No known risks detected."
 
-    net = total_in - total_out - fee_total
     return {
         "address": address,
-        "tx_count": count,
-        "buy_total": round(total_in, 6),
-        "sell_total": round(total_out, 6),
-        "fee_total": round(fee_total, 6),
-        "net_profit": round(net, 6)
+        "tx_count": tx_count,
+        "buy_total": buy_total,
+        "sell_total": sell_total,
+        "fee_total": fee_total,
+        "net_profit": net_profit,
+        "asset_value": asset_value,
+        "related_addresses": list(related_addresses),
+        "risk_message": risk_message,
+        "transactions": filtered_txs,
     }
