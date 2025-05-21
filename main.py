@@ -1,14 +1,12 @@
-# backend/main.py
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# 跨域设置，允许所有源访问，根据需求可修改
+# 允许跨域请求，方便前端调用API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # 生产环境建议限制为你前端的域名
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -19,17 +17,27 @@ app.add_middleware(
 async def root():
     return {"message": "Solana Analyzer API is running"}
 
-# 这里是你之前所有的路由和逻辑，比如交易数据接口、分析接口等
-# 下面是示例，替换为你的具体业务代码
+# 示例分析接口，接收钱包地址参数，返回模拟的分析结果
+@app.get("/analyze")
+async def analyze(address: str = Query(..., description="Solana wallet address to analyze")):
+    # 这里可以替换为你自己的真实业务逻辑
+    return {
+        "address": address,
+        "tx_count": 42,
+        "buy_total": 12.5,
+        "sell_total": 7.8,
+        "fee_total": 0.15,
+        "net_profit": 4.55,
+        "total_value": 50.0
+    }
 
+# 你可以继续添加其他接口，例如下面的示例
 @app.get("/api/transactions")
 async def get_transactions():
-    # 这里写你获取交易的逻辑
+    # 示例返回空交易列表
     return {"transactions": []}
 
 @app.get("/api/asset_value")
 async def get_asset_value():
-    # 这里写你资产估值的逻辑
+    # 示例返回资产估值为0
     return {"asset_value": 0}
-
-# 继续添加你的其他API接口
